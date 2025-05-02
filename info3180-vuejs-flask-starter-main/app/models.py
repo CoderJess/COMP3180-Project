@@ -1,3 +1,4 @@
+# Add any model classes for Flask-SQLAlchemy here 
 from datetime import datetime
 from . import db
 
