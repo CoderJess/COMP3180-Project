@@ -1,3 +1,4 @@
+import os
 from app import app, db
 from app.models import User, Profile, Favourite
 from flask import request, jsonify, send_from_directory
@@ -22,7 +23,11 @@ from datetime import datetime, timedelta
 # ---------- AUTH ----------
 @app.route('/')
 def index():
-    return jsonify(message="This is the beginning of our API")
+    return app.send_static_file('index.html')
+
+@app.route('assets/<path:filename>')
+def send_assets(filename):
+    return app.send_static_file(os.path.join('assets', filename))
 
 @app.route('/api/register', methods=['POST'])
 def register():
