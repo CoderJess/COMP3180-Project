@@ -25,7 +25,7 @@ from datetime import datetime, timedelta
 def index():
     return app.send_static_file('index.html')
 
-@app.route('assets/<path:filename>')
+@app.route('/assets/<path:filename>')
 def send_assets(filename):
     return app.send_static_file(os.path.join('assets', filename))
 
