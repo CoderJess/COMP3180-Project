@@ -1,6 +1,6 @@
 from . import db
 from werkzeug.security import generate_password_hash
-from datetime import datetime  # Import datetime directly
+from datetime import datetime
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)

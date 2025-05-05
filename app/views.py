@@ -1,27 +1,29 @@
-from flask import Flask, request, jsonify, send_from_directory
-from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
-from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
+from app import app, db
+from app.models import User, Profile, Favourite
+from flask import request, jsonify, send_from_directory
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
-from flask_cors import CORS
-import os
 
-app = Flask(__name__)
-CORS(app)  # Allow frontend access
+# app = Flask(__name__)
+# CORS(app)  # Allow frontend access
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///jamdate.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['JWT_SECRET_KEY'] = 'super-secret-key'
-app.config['UPLOAD_FOLDER'] = 'uploads'
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+# app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///jamdate.db'
+# app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# app.config['JWT_SECRET_KEY'] = 'super-secret-key'
+# app.config['UPLOAD_FOLDER'] = 'uploads'
+# os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-db = SQLAlchemy(app)
-migrate = Migrate(app, db)
-jwt = JWTManager(app)
+# db = SQLAlchemy(app)
+# migrate = Migrate(app, db)
+# jwt = JWTManager(app)
 
 
 # ---------- AUTH ----------
+@app.route('/')
+def index():
+    return jsonify(message="This is the beginning of our API")
+
 @app.route('/api/register', methods=['POST'])
 def register():
     data = request.json
@@ -74,6 +76,46 @@ def get_profiles():
         })
     return jsonify(result)
 
+# @app.route('/api/profiles', methods=['POST'])
+# @jwt_required()
+# def create_profile(current_user):
+#     data = request.get_json()
+
+#     existing_profiles = Profile.query.filter_by(user_id=current_user.id).count()
+#     if existing_profiles >= 3:
+#         return jsonify({'message': 'Maximum of 3 profiles allowed per user'}), 400
+    
+#     required_fields = [
+#         'description', 'parish', 'biography', 'sex', 'race', 'birth_year',
+#         'height', 'fav_cuisine', 'fav_colour', 'fav_school_subject',
+#         'political', 'religious', 'family_oriented'
+#     ]
+
+#     for field in required_fields:
+#         if field not in data:
+#             return jsonify({'message': f'Missing required field: {field}'}), 400
+        
+#     new_profile = Profile(
+#         user_id=current_user.id,
+#         description=data['description'],
+#         parish=data['parish'],
+#         biography=data['biography'],
+#         sex=data['sex'],
+#         race=data['race'],
+#         birth_year=data['birth_year'],
+#         height=data['height'],
+#         fav_cuisine=data['fav_cuisine'],
+#         fav_colour=data['fav_colour'],
+#         fav_school_subject=data['fav_school_subject'],
+#         political=data['political'],
+#         religious=data['religious'],
+#         family_oriented=data['family_oriented']
+#     )
+
+#     db.session.add(new_profile)
+#     db.session.commit()
+    
+#     return jsonify({'message': 'Profile created successfully!', 'profile_id': new_profile.id}), 201
 
 @app.route('/api/profiles', methods=['POST'])
 @jwt_required()
@@ -215,5 +257,5 @@ def uploads(filename):
 
 
 # ---------- RUN ----------
-if __name__ == '__main__':
-    app.run(debug=True)
+# if __name__ == '__main__':
+#     app.run(debug=True)

@@ -7,7 +7,8 @@ import ProfileDetails from '../views/ProfileDetails.vue';
 import MyProfiles from '../views/MyProfiles.vue';
 import FavouritesReport from '../views/FavouritesReport.vue';
 import AddProfileForm from '../views/AddProfileForm.vue';
-import Matches from '../views/Matches.vue'; // ✅ ADD THIS
+import Matches from '../views/Matches.vue';
+import About from '../views/About.vue';
 
 const routes = [
   { path: '/', component: HomePage },
@@ -18,7 +19,8 @@ const routes = [
   { path: '/myprofiles', component: MyProfiles },
   { path: '/favourites', component: FavouritesReport },
   { path: '/add-profile', component: AddProfileForm },
-  { path: '/matches/:id', component: Matches } // ✅ ADD THIS ROUTE
+  { path: '/matches/:id', component: Matches },
+  { path: '/about', component: About }
 ];
 
 const router = createRouter({
