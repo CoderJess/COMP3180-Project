@@ -16,10 +16,10 @@
         <div class="story-section">
           <h2>Our Story</h2>
           <p>
-            Jam-Date was born in 2025 when four college friends—Shaquille, Kelly, Samantha, and Ryon—noticed 
+            Jam-Date was born in 2025 when four college friends—Shaquille, Kelly, Samantha, and Ryon noticed 
             the lack of dating platforms that truly understood Jamaican culture and dating preferences. As Jamaican 
-            students studying abroad, they experienced firsthand the challenges of finding partners who appreciated 
-            their cultural background. What began as a final-year project quickly evolved into a passion-driven 
+            students studying at the University of the West Indies, they experienced firsthand the challenges of finding partners who appreciated 
+            their cultural background. What began as an end of semester project quickly evolved into a passion-driven 
             platform connecting Jamaicans across the globe.
           </p>
         </div>
