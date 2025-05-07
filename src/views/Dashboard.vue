@@ -1,550 +1,437 @@
-<!-- views/Home.vue -->
 <template>
-  <div class="home-container">
-    <div class="header">
-      <h1>Welcome to Jam-Date</h1>
-      <p>See the latest connections and find your match!</p>
+  <div class="container mt-4">
+    <h2 class="page-title mb-4">Latest Profiles</h2>
+
+    <!-- Search Box -->
+    <div class="search-container mb-4">
+      <div class="search-row">
+        <div class="search-input-container">
+          <input
+            v-model="searchText"
+            type="text"
+            placeholder="Search..."
+            class="search-input"
+          />
+        </div>
+        <div class="filter-buttons">
+          <button class="filter-btn" @click="setFilter('name')">Name</button>
+          <button class="filter-btn" @click="setFilter('birth_year')">Birth Year</button>
+          <button class="filter-btn" @click="setFilter('sex')">Sex</button>
+          <button class="filter-btn" @click="setFilter('race')">Race</button>
+          <button class="clear-btn" @click="clearSearch">Clear</button>
+        </div>
+      </div>
     </div>
 
-    <div class="my-profile-container">
-      <div class="my-profile-banner">
-        <h1>
-          <router-link class="my-profile-link" to="/myprofiles">My Profiles</router-link>
-        </h1>
-        <ul class="my-profile-btns">
-          <li>
-            <router-link to="#report" class="btn show-report-btn">Show Report</router-link>
-          </li>
-          <li>
-            <router-link class="btn add-profile-btn" to="/add-profile">Add Profile</router-link>
-          </li>
-        </ul>
+    <!-- Profiles Grid -->
+    <div class="profiles-grid">
+      <div v-for="profile in displayedProfiles" :key="profile.id" class="profile-col">
+        <div class="profile-card">
+          <div class="img-container">
+            <img
+              :src="profile.photo ? `${API_BASE_URL}/uploads/${profile.photo}` : `${API_BASE_URL}/uploads/defaultAvatar.png`"
+              class="profile-img"
+              alt="Profile photo"
+            />
+          </div>
+          <div class="card-body">
+            <h5 class="card-title">{{ profile.username }}</h5>
+            <p class="card-text"><span class="text-label">Sex:</span> {{ profile.sex }}</p>
+            <p class="card-text"><span class="text-label">Race:</span> {{ profile.race }}</p>
+            <p class="card-text"><span class="text-label">Parish:</span> {{ profile.parish }}</p>
+
+            <!-- View More Button -->
+            <router-link 
+              :to="`/profiles/${profile.id}`" 
+              class="view-more-btn"
+            >
+              View More Details
+            </router-link>
+          </div>
+
+          <div class="card-footer">
+            Joined: {{ formatDate(profile.date_joined) }}
+          </div>
+        </div>
       </div>
     </div>
-    
-     <div class="profile-info">
-      <!-- Search Section -->
-      <div class="search-card">
-        <div class="search-header">
-          <h4>Search Profiles</h4>
-        </div>
-        <div class="search-body">
-          <div class="search-grid">
-            <div class="form-group">
-              <label for="search-name">Name</label>
-              <input
-                type="text"
-                id="search-name"
-                v-model="searchParams.name"
-              />
-            </div>
-            <div class="form-group">
-              <label for="search-birth-year">Birth Year</label>
-              <input
-                type="number"
-                id="search-birth-year"
-                v-model="searchParams.birth_year"
-              />
-            </div>
-            <div class="form-group">
-              <label for="search-sex">Sex</label>
-              <select id="search-sex" v-model="searchParams.sex">
-                <option value="">Any</option>
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-                <option value="Other">Other</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label for="search-race">Race</label>
-              <input
-                type="text"
-                id="search-race"
-                v-model="searchParams.race"
-              />
-            </div>
-          </div>
-          <div class="search-actions">
-            <button class="btn primary" @click="searchProfiles">Search</button>
-            <button class="btn secondary" @click="resetSearch">Reset</button>
-          </div>
-        </div>
-      </div>
-      
-      <!-- Profiles Section -->
-      <div v-if="loading" class="loading-spinner">
-        <div class="spinner"></div>
-      </div>
-      
-      <div v-else class="profiles-section">
-        <h2>{{ searchActive ? 'Search Results' : 'Recent Profiles' }}</h2>
-        
-        <div v-if="profiles.length === 0" class="empty-state">
-          No profiles found.
-        </div>
-        
-        <div class="profiles-grid">
-          <div class="profile-card" v-for="profile in profiles" :key="profile.id">
-            <div class="profile-image">
-              <img 
-                v-if="profile.user && profile.user.photo" 
-                :src="profile.user.photo" 
-                alt="Profile photo"
-              >
-              <div v-else class="profile-placeholder">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                  <circle cx="12" cy="7" r="4"></circle>
-                </svg>
-              </div>
-            </div>
-            
-            <div class="profile-body">
-              <h5>{{ profile.user ? profile.user.name : 'User' }}</h5>
-              <p class="profile-age">
-                {{ profile.age || (profile.birth_year ? (new Date().getFullYear() - profile.birth_year) : 'Unknown') }} years old
-              </p>
-              <p class="profile-description">{{ truncate(profile.description || 'No description available', 100) }}</p>
-            </div>
-            
-            <div class="profile-footer">
-              <router-link :to="`/profiles/${profile.id}`" class="btn primary">
-                View more details
-              </router-link>
-            </div>
-          </div>
-        </div>
-      </div>
-     </div>
+
+    <!-- Messages -->
+    <div v-if="!loading && displayedProfiles.length === 0" class="message info-message">
+      No profiles found.
+    </div>
+    <div v-if="loading" class="message warning-message">
+      Loading profiles...
+    </div>
+    <div v-if="error" class="message error-message">
+      {{ error }}
+    </div>
   </div>
 </template>
 
-<script>
-export default {
-  name: 'Home',
-  data() {
-    return {
-      profiles: [],
-      loading: true,
-      error: null,
-      searchParams: {
-        name: '',
-        birth_year: '',
-        sex: '',
-        race: ''
-      },
-      searchActive: false
+
+
+<script setup>
+import { ref, computed, onMounted } from 'vue'
+import api from '../api'
+import { API_BASE_URL } from '../config'
+
+// State
+const allProfiles = ref([])
+const profiles = ref([])
+const searchText = ref('')
+const filterKey = ref('')
+const loading = ref(false)
+const error = ref('')
+const searching = ref(false)
+
+
+// Computed
+const displayedProfiles = computed(() => profiles.value)
+
+
+// Methods
+const fetchProfiles = async () => {
+  loading.value = true
+  error.value = ''
+  searching.value = false
+
+  try {
+    const token = localStorage.getItem('token')
+    if (!token) {
+      error.value = 'Not authenticated. Please log in.'
+      return
     }
-  },
-  created() {
-    this.fetchRecentProfiles();
-  },
-  methods: {
-    async fetchRecentProfiles() {
-      this.loading = true;
-      try {
-        // Fetch the 4 most recent profiles
-        const response = await this.$http.get('/api/profiles');
-        this.profiles = response.data;
-        this.searchActive = false;
-      } catch (err) {
-        console.error('Error fetching recent profiles:', err);
-        this.error = 'Failed to load recent profiles';
-      } finally {
-        this.loading = false;
-      }
-    },
-    
-    async searchProfiles() {
-      this.loading = true;
-      
-      // Build query parameters
-      const params = {};
-      if (this.searchParams.name) params.name = this.searchParams.name;
-      if (this.searchParams.birth_year) params.birth_year = this.searchParams.birth_year;
-      if (this.searchParams.sex) params.sex = this.searchParams.sex;
-      if (this.searchParams.race) params.race = this.searchParams.race;
-      
-      try {
-        const response = await this.$http.get('/api/search', { params });
-        this.profiles = response.data;
-        this.searchActive = true;
-      } catch (err) {
-        console.error('Error searching profiles:', err);
-        this.error = 'Failed to search profiles';
-      } finally {
-        this.loading = false;
-      }
-    },
-    
-    resetSearch() {
-      this.searchParams = {
-        name: '',
-        birth_year: '',
-        sex: '',
-        race: ''
-      };
-      this.fetchRecentProfiles();
-    },
-    
-    truncate(text, length) {
-      if (!text) return '';
-      return text.length > length ? text.substring(0, length) + '...' : text;
-    }
+
+    const res = await api.get('/api/profiles', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+
+    profiles.value = res.data.slice(0, 4) // Only 4 on default load
+  } catch (err) {
+    console.error('Error fetching profiles:', err)
+    error.value = err.response?.data?.message || 'Failed to load profiles'
+  } finally {
+    loading.value = false
   }
 }
+
+
+const setFilter = (key) => {
+  filterKey.value = key
+  if (searchText.value) {
+    searchProfiles()
+  }
+}
+
+
+
+const clearSearch = () => {
+  filterKey.value = ''
+  searchText.value = ''
+  fetchProfiles() // goes back to 4 latest
+}
+
+
+
+function formatDate(dateStr) {
+  const options = { year: 'numeric', month: 'short', day: 'numeric' }
+  return new Date(dateStr).toLocaleDateString(undefined, options)
+}
+
+const searchProfiles = async () => {
+  loading.value = true
+  error.value = ''
+  searching.value = true
+
+  try {
+    const token = localStorage.getItem('token')
+    if (!token) {
+      error.value = 'Not authenticated. Please log in.'
+      return
+    }
+
+    const params = new URLSearchParams()
+    if (filterKey.value && searchText.value) {
+      params.append(filterKey.value, searchText.value)
+    }
+
+    const res = await api.get(`/api/search?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+
+    profiles.value = res.data // Full search results
+  } catch (err) {
+    console.error('Search failed:', err)
+    error.value = err.response?.data?.message || 'Search failed'
+  } finally {
+    loading.value = false
+  }
+}
+
+
+
+
+// Lifecycle
+onMounted(fetchProfiles)
 </script>
 
 <style>
-/* Custom CSS Variables */
-:root {
-  --primary-color: #4863A0;
-  --primary-light: #6983c0;
-  --primary-dark: #3a4f80;
-  --secondary-color: #f0f2f5;
-  --text-color: #333333;
-  --light-text: #666666;
-  --border-color: #e1e4e8;
-  --success-color: #28a745;
-  --warning-color: #ffc107;
-  --danger-color: #dc3545;
-  --info-color: #17a2b8;
-  --radius: 8px;
-  --shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  --transition: all 0.3s ease;
+/* Global Styles */
+body {
+  background-color: #121212;
+  color: #e0e0e0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-/* Base Styles */
-.home-container {
+.container {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 2rem 1rem;
-  color: var(--text-color);
+  padding: 0 15px;
 }
 
-.header {
-  background: linear-gradient(90deg, #FFB100, #FF6B00);
-  color: white;
-  padding: 20px;
-  border-radius: 12px;
-  text-align: center;
-  margin-bottom: 0;
-}
-
-.profile-info{
-  max-width: 1200px;
-  display: flex;
-  align-items: center;
-  flex-direction: column;
-  margin-top: 0;
-}
-
+/* Page Title */
 .page-title {
-  font-size: 2rem;
-  margin-bottom: 1.5rem;
-  color: var(--primary-dark);
-}
-
-.my-profile-container{
-  max-width: 1200px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.my-profile-banner {
-  background-color: #343a40;
-  color: #ffffff;
-  padding: 20px;
-  padding-top: 2px;
-  padding-bottom: 2px;
-  text-align: center;
-  width: 945px;
-  border-radius: 0 0 10px 10px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
-.my-profile-link {
-  text-decoration: none;
-  color: white;
-}
-
-.my-profile-btns{
-  display: flex;
-  justify-content: space-around;
-  list-style-type: none;
-}
-
-.add-profile-btn{
-  background: linear-gradient(90deg, #FFB100, #FF6B00);
-  color: #ffffff;
-  padding: 10px 20px;
-  border: none;
-  border-radius: 5px;
-  text-decoration: none;
-}
-
-.add-profile-btn:hover {
-  background: linear-gradient(90deg, #8c6813, #f76802);
-}
-
-.show-report-btn {
-  background-color: #28a745;
-  color: #ffffff;
-  padding: 10px 20px;
-  border: none;
-  border-radius: 5px;
-  text-decoration: none;
-}
-
-.show-report-btn:hover {
-  background-color: #218838;
-}
-
-
-/* Search Card */
-.search-card {
-  background-color: white;
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  margin-bottom: 2rem;
-  overflow: hidden;
-}
-
-.search-header {
-  background: linear-gradient(90deg, #FFB100, #FF6B00);
-  color: white;
-  padding: 1rem 1.5rem;
-}
-
-.search-header h4 {
-  margin: 0;
+  color: #d4af37; /* Gold */
+  font-size: 32px;
   font-weight: 600;
+  letter-spacing: 1px;
+  border-bottom: 2px solid #1db954; /* Green */
+  padding-bottom: 10px;
+  margin-bottom: 25px;
 }
 
-.search-body {
-  padding: 1.5rem;
+/* Search Container */
+.search-container {
+  background-color: #1a1a1a;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  border: 1px solid #333;
+  margin-bottom: 30px;
 }
 
-.search-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 1rem;
-}
-
-@media (max-width: 768px) {
-  .search-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (max-width: 576px) {
-  .search-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.form-group {
-  margin-bottom: 1rem;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 0.5rem;
-  font-weight: 500;
-  color: var(--text-color);
-}
-
-.form-group input,
-.form-group select {
-  width: 100%;
-  padding: 0.75rem;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  font-size: 1rem;
-  transition: var(--transition);
-}
-
-.form-group input:focus,
-.form-group select:focus {
-  outline: none;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px rgba(72, 99, 160, 0.2);
-}
-
-.search-actions {
+.search-row {
   display: flex;
-  gap: 0.75rem;
-  margin-top: 1rem;
+  flex-wrap: wrap;
+  gap: 15px;
+  align-items: center;
 }
 
-/* Buttons */
-.btn {
-  padding: 0.75rem 1.5rem;
-  border: none;
-  border-radius: var(--radius);
-  font-size: 1rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: var(--transition);
-  text-decoration: none;
-  display: inline-block;
+.search-input-container {
+  flex: 1;
+  min-width: 250px;
 }
 
-.btn.primary {
-  background: linear-gradient(90deg, #FFB100, #FF6B00);
+.search-input {
+  width: 100%;
+  padding: 12px 15px;
+  border: 1px solid #333;
+  border-radius: 6px;
+  background-color: #242424;
   color: white;
+  font-size: 14px;
+  transition: all 0.3s ease;
 }
 
-.btn.primary:hover {
-  background-color: var(--primary-dark);
+.search-input:focus {
+  border-color: #1db954; /* Green */
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(29, 185, 84, 0.3);
 }
 
-.btn.secondary {
-  background-color: var(--secondary-color);
-  color: var(--text-color);
+.search-input::placeholder {
+  color: #888;
 }
 
-.btn.secondary:hover {
-  background-color: #e0e0e0;
+.filter-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
-/* Profile Cards */
-.profiles-section h2 {
-  margin-bottom: 1.5rem;
-  font-size: 1.5rem;
-  color: var(--primary-dark);
+.filter-btn {
+  padding: 10px 15px;
+  background-color: #333;
+  color: #d4af37; /* Gold */
+  border: 1px solid #d4af37; /* Gold */
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-weight: 500;
 }
 
-.empty-state {
-  background-color: rgba(23, 162, 184, 0.1);
-  color: var(--info-color);
-  padding: 1rem;
-  border-radius: var(--radius);
-  text-align: center;
+.filter-btn:hover {
+  background-color: #444;
+  transform: translateY(-2px);
 }
 
+.clear-btn {
+  padding: 10px 15px;
+  background-color: rgba(169, 68, 66, 0.2);
+  color: #d4af37; /* Gold */
+  border: 1px solid #d4af37; /* Gold */
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-weight: 500;
+}
+
+.clear-btn:hover {
+  background-color: rgba(169, 68, 66, 0.3);
+  transform: translateY(-2px);
+}
+
+/* Profiles Grid */
 .profiles-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 1.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  margin: -10px;
 }
 
-@media (max-width: 1024px) {
-  .profiles-grid {
-    grid-template-columns: repeat(3, 1fr);
+.profile-col {
+  width: 100%;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+@media (min-width: 576px) {
+  .profile-col {
+    width: 50%;
   }
 }
 
-@media (max-width: 768px) {
-  .profiles-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (max-width: 576px) {
-  .profiles-grid {
-    grid-template-columns: 1fr;
+@media (min-width: 992px) {
+  .profile-col {
+    width: 25%;
   }
 }
 
 .profile-card {
-  background-color: white;
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  background-color: #1a1a1a;
+  border-radius: 10px;
   overflow: hidden;
-  transition: var(--transition);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  height: 100%;
+  border: 1px solid #333;
+  position: relative;
 }
 
 .profile-card:hover {
   transform: translateY(-5px);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+  border-color: #1db954; /* Green border on hover */
 }
 
-.profile-image {
-  height: 180px;
-  background-color: #f8f9fa;
-  display: flex;
-  justify-content: center;
-  align-items: center;
+.profile-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg, #1db954, #d4af37); /* Green to gold gradient */
+}
+
+.img-container {
+  width: 100%;
+  aspect-ratio: 1 / 1; /* Square image container */
   overflow: hidden;
 }
 
-.profile-image img {
-  max-height: 180px;
-  max-width: 100%;
-  object-fit: cover;
-}
-
-.profile-placeholder {
-  width: 80px;
-  height: 80px;
-  color: #adb5bd;
-}
-
-.profile-body {
-  padding: 1.25rem;
-  flex-grow: 1;
-}
-
-.profile-body h5 {
-  margin-top: 0;
-  margin-bottom: 0.5rem;
-  font-size: 1.1rem;
-  color: var(--primary-dark);
-}
-
-.profile-age {
-  color: var(--light-text);
-  font-size: 0.9rem;
-  margin-bottom: 0.75rem;
-}
-
-.profile-description {
-  color: var(--text-color);
-  font-size: 0.95rem;
-  line-height: 1.5;
-  margin-bottom: 0;
-}
-
-.profile-footer {
-  padding: 1rem;
-  border-top: 1px solid var(--border-color);
-  text-align: center;
-}
-
-.profile-footer .btn {
+.profile-img {
   width: 100%;
-  padding: 0.6rem;
-  font-size: 0.9rem;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.5s ease;
 }
 
-/* Loading Spinner */
-.loading-spinner {
+.profile-card:hover .profile-img {
+  transform: scale(1.05);
+}
+
+.card-body {
+  padding: 15px;
+  flex: 1;
   display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 3rem 0;
+  flex-direction: column;
 }
 
-.spinner {
-  width: 40px;
-  height: 40px;
-  border: 4px solid rgba(72, 99, 160, 0.3);
-  border-radius: 50%;
-  border-top-color: var(--primary-color);
-  animation: spin 1s linear infinite;
+.card-title {
+  color: #d4af37; /* Gold */
+  font-size: 18px;
+  margin-bottom: 12px;
+  font-weight: 600;
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+.card-text {
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: #e0e0e0;
+}
+
+.text-label {
+  color: #1db954; /* Green */
+  font-weight: 600;
+}
+
+.view-more-btn {
+  display: inline-block;
+  background: transparent;
+  color: #1db954; /* Green */
+  border: 1px solid #1db954; /* Green */
+  padding: 8px 15px;
+  border-radius: 6px;
+  margin-top: auto;
+  text-align: center;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.view-more-btn:hover {
+  background-color: #1db954; /* Green */
+  color: #fff;
+}
+
+.card-footer {
+  background-color: #242424;
+  padding: 10px 15px;
+  text-align: right;
+  font-size: 12px;
+  color: #888;
+  border-top: 1px solid #333;
+}
+
+/* Messages */
+.message {
+  padding: 15px;
+  border-radius: 8px;
+  margin: 20px 0;
+  text-align: center;
+  font-size: 16px;
+}
+
+.info-message {
+  background-color: rgba(51, 102, 153, 0.2);
+  color: #d4af37; /* Gold */
+  border: 1px solid #d4af37; /* Gold */
+}
+
+.warning-message {
+  background-color: rgba(204, 153, 0, 0.2);
+  color: #d4af37; /* Gold */
+  border: 1px solid #d4af37; /* Gold */
+}
+
+.error-message {
+  background-color: rgba(169, 68, 66, 0.2);
+  color: #d4af37; /* Gold */
+  border: 1px solid #d4af37; /* Gold */
 }
 </style>

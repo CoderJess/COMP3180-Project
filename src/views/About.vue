@@ -101,7 +101,7 @@
   }
   </script>
   
-  <style scoped>
+  <style>
   :root {
     --black: #121212;
     --green: #1e8f4e;

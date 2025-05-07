@@ -1,266 +1,678 @@
-import os
+"""
+Flask Documentation:     https://flask.palletsprojects.com/
+Jinja2 Documentation:    https://jinja.palletsprojects.com/
+Werkzeug Documentation:  https://werkzeug.palletsprojects.com/
+This file creates your application.
+"""
+
 from app import app, db
+from flask import render_template, request, jsonify, send_file
 from app.models import User, Profile, Favourite
-from flask import request, jsonify, send_from_directory
-from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
+from sqlalchemy import func
+import os
+from app import app, db, csrf
+from flask import (
+    render_template,
+    request,
+    redirect,
+    url_for,
+    flash,
+    session,
+    abort,
+    send_from_directory,
+    jsonify,
+)
 from werkzeug.utils import secure_filename
-from datetime import datetime, timedelta
+from app.models import User, Profile, Favourite
+from app.forms import LoginForm, ProfileForm, RegisterForm
+from werkzeug.security import generate_password_hash, check_password_hash
 
-# app = Flask(__name__)
-# CORS(app)  # Allow frontend access
+from flask_wtf.csrf import generate_csrf
 
-# app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///jamdate.db'
-# app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-# app.config['JWT_SECRET_KEY'] = 'super-secret-key'
-# app.config['UPLOAD_FOLDER'] = 'uploads'
-# os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+from functools import wraps
+from datetime import datetime, timedelta, timezone
+import jwt
+from sqlalchemy.exc import SQLAlchemyError
 
-# db = SQLAlchemy(app)
-# migrate = Migrate(app, db)
-# jwt = JWTManager(app)
+##Helper Function
+
+blacklisted_tokens = set()
 
 
-# ---------- AUTH ----------
-@app.route('/')
+def create_token(user_id):  # jwt token
+    payload = {
+        "user_id": user_id,
+        "exp": datetime.now(timezone.utc) + timedelta(hours=6),
+    }
+    return jwt.encode(payload, app.config["SECRET_KEY"], algorithm="HS256")
+
+
+def decode_token(token):  # jwt token
+    return jwt.decode(token, app.config["SECRET_KEY"], algorithms=["HS256"])
+
+
+def jwt_required(f):  ##jwt required decorator to attach to the relevant routes
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        auth_header = request.headers.get("Authorization")
+        if not auth_header:
+            return jsonify({"message": "Missing token"}), 401
+
+        try:
+            token = auth_header.split(" ")[1]  # "Bearer <token>"
+
+            # Check if the token is blacklisted
+            if token in blacklisted_tokens:
+                return (
+                    jsonify(
+                        {"message": "Token has been blacklisted. Please log in again."}
+                    ),
+                    401,
+                )
+
+            data = decode_token(token)
+            user_id = data["user_id"]
+        except jwt.ExpiredSignatureError:
+            return jsonify({"message": "Token expired"}), 401
+        except Exception as e:
+            return jsonify({"message": "Invalid token"}), 401
+
+        return f(user_id, *args, **kwargs)
+
+    return wrapper
+
+
+####
+####
+####
+
+# this is the route for the index page
+# and the static files (assets) folder
+# this is where the vue app will be served from
+# the vue app will be served from the index.html file in the static folder
+
+
+@app.route("/")
 def index():
-    return app.send_static_file('index.html')
+    return app.send_static_file("index.html")
 
-@app.route('/assets/<path:filename>')
+
+@app.route("/assets/<path:filename>")
 def send_assets(filename):
-    return app.send_static_file(os.path.join('assets', filename))
+    """Serve static files from the assets directory."""
+    return app.send_static_file(os.path.join("assets", filename))
 
-@app.route('/api/register', methods=['POST'])
+
+@app.route("/<path:filename>")
+def send_favicon(filename):
+    """Serve static file icon from the static directory."""
+    return app.send_static_file(filename)
+
+
+####
+####
+####
+
+
+###
+# Routing for application.
+###
+
+
+@app.route("/api/register", methods=["POST"])
 def register():
-    data = request.json
-    user = User(username=data['username'], password=data['password'], name=data['name'], email=data['email'])
-    db.session.add(user)
-    db.session.commit()
-    return jsonify(message="User registered successfully"), 201
+    form = RegisterForm()
+
+    if form.validate_on_submit():
+
+        try:
+            username = form.username.data
+            password = form.password.data
+            name = form.name.data
+            email = form.email.data
+
+            photo = form.photo.data
+            filename = secure_filename(photo.filename)
+            photo.save(os.path.join(app.config["UPLOAD_FOLDER"], filename))
+
+            user = User(username, password, name, email, filename)
+
+            db.session.add(user)
+            db.session.commit()
+
+            return (
+                jsonify(
+                    {
+                        "message": "User registered successfully",
+                        "user": {
+                            "id": user.id,
+                            "username": user.username,
+                            "name": user.name,
+                            "email": user.email,
+                            "photo": filename,
+                        },
+                    }
+                ),
+                201,
+            )
+
+        except SQLAlchemyError as e:
+            db.session.rollback()
+            return (
+                jsonify(
+                    {
+                        "message": "Something went wrong while saving to the database.",
+                        "error": str(e.__dict__.get("orig")),
+                    }
+                ),
+                500,
+            )
+    return (
+        jsonify(
+            {
+                "errors": form.errors,
+                "message": "User registration failed due to validation errors.",
+            }
+        ),
+        400,
+    )
 
 
-@app.route('/api/auth/login', methods=['POST'])
+@app.route(
+    "/api/csrf-token", methods=["GET"]
+)
+def get_csrf():
+    return jsonify({"csrf_token": generate_csrf()})
+
+
+@app.route("/uploads/<filename>", methods=["GET"])
+def get_image(filename):
+    upload_folder = os.path.join(os.getcwd(), app.config["UPLOAD_FOLDER"])
+
+    return send_from_directory(upload_folder, filename)
+
+
+@app.route("/api/auth/login", methods=["POST"])
 def login():
-    data = request.json
-    user = User.query.filter_by(username=data['username'], password=data['password']).first()
-    if user:
-        token = create_access_token(identity=user.id, expires_delta=timedelta(days=1))
-        return jsonify(token=token, user_id=user.id)
-    return jsonify(message="Invalid credentials"), 401
+    form = LoginForm()
+
+    if form.validate_on_submit():
+
+        username = form.username.data
+        password = form.password.data
+
+        user = User.query.filter_by(username=username).first()
+
+        if user is not None and check_password_hash(user.password, password):
+
+            token = create_token(user.id)
+
+            return (
+                jsonify(
+                    {
+                        "message": "Login successful",
+                        "user": {
+                            "id": user.id,
+                            "username": user.username,                       
+                        },
+                        "token": token,
+                    }
+                ),
+                200,
+            )
+        else:
+            return jsonify({"message": "Invalid username or password"}), 401
+    return (
+        jsonify(
+            {
+                "errors": form.errors,
+                "message": "User login failed due to validation errors.",
+            }
+        ),
+        400,
+    )
 
 
-@app.route('/api/auth/logout', methods=['POST'])
-@jwt_required()
-def logout():
-    return jsonify(message="Logged out")
+@csrf.exempt
+@app.route("/api/auth/logout", methods=["POST"])
+@jwt_required
+def logout(user_id):
+    # Get the token from the Authorization header
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
+        return jsonify({"message": "Missing token"}), 401
+
+    token = auth_header.split(" ")[1]  # "Bearer <token>"
+
+    # Add the token to the blacklist
+    blacklisted_tokens.add(token)
+
+    return jsonify({"message": f"Logout successful for User {user_id}"}), 200
 
 
-# ---------- PROFILES ----------
-@app.route('/api/profiles', methods=['GET'])
-@jwt_required()
-def get_profiles():
-    profiles = Profile.query.order_by(Profile.id.desc()).limit(4).all()
-    result = []
-    for p in profiles:
-        result.append({
-            'id': p.id,
-            'user_id_fk': p.user_id_fk,
-            'birth_year': p.birth_year,
-            'sex': p.sex,
-            'race': p.race,
-            'description': p.description,
-            'parish': p.parish,
-            'biography': p.biography,
-            'height': p.height,
-            'fav_cuisine': p.fav_cuisine,
-            'fav_colour': p.fav_colour,
-            'fav_school_subject': p.fav_school_subject,
-            'political': p.political,
-            'religious': p.religious,
-            'family_oriented': p.family_oriented,
-            'name': User.query.get(p.user_id_fk).name
-        })
-    return jsonify(result)
+@app.route("/api/profiles", methods=["GET"])
+@csrf.exempt
+@jwt_required
+def get_all_profiles(user_id):
 
-# @app.route('/api/profiles', methods=['POST'])
-# @jwt_required()
-# def create_profile(current_user):
-#     data = request.get_json()
+    results = (
+        db.session.query(Profile, User)
+        .join(User, Profile.user_id_fk == User.id)
+        .filter(User.id != user_id)
+        .order_by(Profile.created_at.desc())
+        .all()
+    )
 
-#     existing_profiles = Profile.query.filter_by(user_id=current_user.id).count()
-#     if existing_profiles >= 3:
-#         return jsonify({'message': 'Maximum of 3 profiles allowed per user'}), 400
-    
-#     required_fields = [
-#         'description', 'parish', 'biography', 'sex', 'race', 'birth_year',
-#         'height', 'fav_cuisine', 'fav_colour', 'fav_school_subject',
-#         'political', 'religious', 'family_oriented'
-#     ]
+    profiles_with_user_info = []
+    for profile, user in results:
+        profiles_with_user_info.append(
+            {
+                "id": profile.id,
+                "user_id": user.id,
+                "description": profile.description,
+                "parish": profile.parish,
+                "biography": profile.biography,
+                "sex": profile.sex,
+                "race": profile.race,
+                "birth_year": profile.birth_year,
+                "height": profile.height,
+                "fav_cuisine": profile.fav_cuisine,
+                "fav_colour": profile.fav_colour,
+                "fav_school_sibject": profile.fav_school_subject,
+                "political": profile.political,
+                "religious": profile.religious,
+                "family_oriented": profile.family_oriented,
+                "username": user.username,
+                "photo": user.photo,
+                "date_joined": user.date_joined.isoformat(),
+                "profile_created": profile.created_at.isoformat(),
+            }
+        )
 
-#     for field in required_fields:
-#         if field not in data:
-#             return jsonify({'message': f'Missing required field: {field}'}), 400
-        
-#     new_profile = Profile(
-#         user_id=current_user.id,
-#         description=data['description'],
-#         parish=data['parish'],
-#         biography=data['biography'],
-#         sex=data['sex'],
-#         race=data['race'],
-#         birth_year=data['birth_year'],
-#         height=data['height'],
-#         fav_cuisine=data['fav_cuisine'],
-#         fav_colour=data['fav_colour'],
-#         fav_school_subject=data['fav_school_subject'],
-#         political=data['political'],
-#         religious=data['religious'],
-#         family_oriented=data['family_oriented']
-#     )
-
-#     db.session.add(new_profile)
-#     db.session.commit()
-    
-#     return jsonify({'message': 'Profile created successfully!', 'profile_id': new_profile.id}), 201
-
-@app.route('/api/profiles', methods=['POST'])
-@jwt_required()
-def add_profile():
-    data = request.json
-    current_user = get_jwt_identity()
-    if Profile.query.filter_by(user_id_fk=current_user).count() >= 3:
-        return jsonify(message="Profile limit reached"), 400
-    profile = Profile(user_id_fk=current_user, **data)
-    db.session.add(profile)
-    db.session.commit()
-    return jsonify(message="Profile added successfully")
+    return jsonify(profiles_with_user_info), 200
 
 
-@app.route('/api/profiles/<int:profile_id>', methods=['GET'])
-@jwt_required()
-def get_profile(profile_id):
-    p = Profile.query.get(profile_id)
-    return jsonify({
-        'id': p.id,
-        'user_id_fk': p.user_id_fk,
-        'birth_year': p.birth_year,
-        'sex': p.sex,
-        'race': p.race,
-        'description': p.description,
-        'parish': p.parish,
-        'biography': p.biography,
-        'height': p.height,
-        'fav_cuisine': p.fav_cuisine,
-        'fav_colour': p.fav_colour,
-        'fav_school_subject': p.fav_school_subject,
-        'political': p.political,
-        'religious': p.religious,
-        'family_oriented': p.family_oriented,
-        'name': User.query.get(p.user_id_fk).name
-    })
+@app.route("/api/profiles", methods=["POST"])
+def create_profile():
+
+    form = ProfileForm()
+
+    if form.validate_on_submit:
+
+        user_id = form.user_id.data
+
+        # Check if user already has 3 profiles
+        profile_count = Profile.query.filter_by(user_id_fk=user_id).count()
+        if profile_count >= 3:
+            return jsonify({"message": "You can only create up to 3 profiles."}), 400
+
+        description = form.description.data
+        parish = form.parish.data
+        biography = form.biography.data
+        sex = form.sex.data
+        race = form.race.data
+        birth_year = form.birth_year.data
+        height = form.height.data
+        fav_cuisine = form.fav_cuisine.data
+        fav_colour = form.fav_colour.data
+        fav_school_subject = form.fav_school_subject.data
+        political = form.political.data
+        religious = form.religious.data
+        family_oriented = form.family_oriented.data
+
+        profile = Profile(
+            user_id,
+            description,
+            parish,
+            biography,
+            sex,
+            race,
+            birth_year,
+            height,
+            fav_cuisine,
+            fav_colour,
+            fav_school_subject,
+            political,
+            religious,
+            family_oriented,
+        )
+
+        db.session.add(profile)
+        db.session.commit()
+
+        return (
+            jsonify(
+                {
+                    "message": "Profile created successfully",
+                    "profile": profile.to_dict(),
+                }
+            ),
+            201,
+        )
+
+    return (
+        jsonify(
+            {
+                "errors": form.errors,
+                "message": "User login failed due to validation errors.",
+            }
+        ),
+        400,
+    )
+
+# Get details of a specific profile
+@app.route("/api/profiles/<int:profile_id>", methods=["GET"])
+@csrf.exempt
+@jwt_required
+def get_profile(user_id, profile_id):
+    print("get_profile route was reached")
+    result = (
+        db.session.query(Profile, User)
+        .join(User, Profile.user_id_fk == User.id)
+        .filter(Profile.id == profile_id)
+        .first()
+    )
+
+    if not result:
+        return jsonify({"message": "Profile not found."}), 404
+
+    profile, user = result
+
+    profile_data = {
+        "id": profile.id,
+        "user_id": user.id,
+        "description": profile.description,
+        "parish": profile.parish,
+        "biography": profile.biography,
+        "sex": profile.sex,
+        "race": profile.race,
+        "birth_year": profile.birth_year,
+        "height": profile.height,
+        "fav_cuisine": profile.fav_cuisine,
+        "fav_colour": profile.fav_colour,
+        "fav_school_sibject": profile.fav_school_subject,
+        "political": profile.political,
+        "religious": profile.religious,
+        "family_oriented": profile.family_oriented,
+        "username": user.username,
+        "photo": user.photo,
+        "date_joined": user.date_joined.isoformat(),
+        "profile_created": profile.created_at.isoformat(),
+    }
+
+    return jsonify(profile_data), 200
 
 
-@app.route('/api/profiles/<int:user_id>/favourite', methods=['POST'])
-@jwt_required()
-def favourite_user(user_id):
-    current_user = get_jwt_identity()
-    fav = Favourite(user_id_fk=current_user, fav_user_id_fk=user_id)
+# Add user to favourites
+@app.route("/api/profiles/<int:user_id2>/favourite", methods=["POST"])
+@csrf.exempt
+@jwt_required
+def favourite_user(user_id, user_id2):
+    current_user_id = user_id
+    if current_user_id == user_id2:
+        return jsonify({"error": "You can't favourite yourself."}), 400
+
+    already_fav = Favourite.query.filter_by(
+        user_id_fk=current_user_id, fav_user_id_fk=user_id2
+    ).first()
+    if already_fav:
+        return jsonify({"message": "User is already in favourites."}), 200
+
+    fav = Favourite(user_id_fk=current_user_id, fav_user_id_fk=user_id2)
     db.session.add(fav)
     db.session.commit()
-    return jsonify(message="User favourited")
+    return jsonify({"message": "User added to favourites"}), 201
 
 
-# ---------- FAVOURITES ----------
-@app.route('/api/users/<int:user_id>/favourites', methods=['GET'])
-@jwt_required()
-def get_user_favourites(user_id):
-    favs = Favourite.query.filter_by(user_id_fk=user_id).all()
-    return jsonify([f.fav_user_id_fk for f in favs])
+# UPDATE PROFILE
+@app.route("/api/profiles/<int:profile_id>", methods=["PUT"])
+@csrf.exempt
+@jwt_required
+def update_profile(user_id, profile_id):
+    profile = db.session.get(Profile, profile_id)
+    if not profile:
+        return jsonify({"error": "Profile not found"}), 404
+
+    data = request.get_json()
+
+    for field in [
+        "description",
+        "parish",
+        "biography",
+        "sex",
+        "race",
+        "birth_year",
+        "height",
+        "fav_cuisine",
+        "fav_colour",
+        "fav_school_subject",
+        "political",
+        "religious",
+        "family_oriented",
+    ]:
+        if field in data:
+            setattr(profile, field, data[field])
+
+    db.session.commit()
+    return jsonify({"message": "Profile updated", "profile": profile.to_dict()}), 200
 
 
-@app.route('/api/users/favourites/<int:N>', methods=['GET'])
-@jwt_required()
-def get_top_favourites(N):
-    favs = db.session.query(Favourite.fav_user_id_fk, db.func.count(Favourite.id).label('total')).group_by(Favourite.fav_user_id_fk).order_by(db.desc('total')).limit(N).all()
-    return jsonify([{"user_id": f[0], "total": f[1]} for f in favs])
+@app.route("/api/profiles/matches/<int:profile_id>", methods=["GET"])
+@csrf.exempt
+@jwt_required
+def match_profiles(user_id, profile_id):
 
+    current = Profile.query.filter_by(id=profile_id, user_id_fk=user_id).first()
+    if not current:
+        return jsonify({"error": "Profile not found"}), 404
 
-# ---------- SEARCH ----------
-@app.route('/api/search', methods=['GET'])
-@jwt_required()
-def search():
-    query = Profile.query
+    matches = []
+    all_profiles = Profile.query.filter(
+        Profile.id != profile_id, Profile.user_id_fk != user_id
+    ).all()
 
-    # Search User name
-    name = request.args.get('name')
+    match_fields = [
+        "fav_cuisine",
+        "fav_colour",
+        "fav_school_subject",
+        "political",
+        "religious",
+        "family_oriented",
+    ]
+
+    for profile in all_profiles:
+        if not profile.birth_year or not current.birth_year:
+            continue
+        if abs(profile.birth_year - current.birth_year) > 5:
+            continue
+
+        if not profile.height or not current.height:
+            continue
+        height_diff_inches = abs(profile.height - current.height) * 39.37
+        if not (3 <= int(height_diff_inches) <= 10):
+            continue
+
+        matched_fields = [
+            field
+            for field in match_fields
+            if getattr(profile, field) == getattr(current, field)
+        ]
+        if len(matched_fields) < 3:
+            continue
+
+        profile_dict = profile.to_dict()
+
+        owner = User.query.get(profile.user_id_fk)
+        profile_dict["name"] = owner.name if owner else None
+
+        profile_dict["matched_fields"] = matched_fields
+        matches.append(profile_dict)
+
+    return jsonify(matches), 200
+
+@app.route("/api/search", methods=["GET"])
+@csrf.exempt
+@jwt_required
+def search_profiles(user_id):
+    name = request.args.get("name")
+    birth_year = request.args.get("birth_year")
+    sex = request.args.get("sex")
+    race = request.args.get("race")
+
+    query = (
+        db.session.query(Profile, User)
+        .join(User, Profile.user_id_fk == User.id)
+        .filter(User.id != user_id)
+    )
+
     if name:
-        users = User.query.filter(User.name.ilike(f"%{name}%")).all()
-        user_ids = [u.id for u in users]
-        query = query.filter(Profile.user_id_fk.in_(user_ids))
+        query = query.filter(func.lower(User.username).like(f"%{name.lower()}%"))
+    if birth_year:
+        query = query.filter(Profile.birth_year == int(birth_year))
+    if sex:
+        query = query.filter(func.lower(Profile.sex) == sex.lower())
+    if race:
+        query = query.filter(func.lower(Profile.race) == race.lower())
 
-    for field in ['birth_year', 'sex', 'race']:
-        value = request.args.get(field)
-        if value:
-            query = query.filter(getattr(Profile, field) == value)
+    results = query.order_by(Profile.created_at.desc()).all()
+
+    profiles_with_user_info = []
+    for profile, user in results:
+        profiles_with_user_info.append(
+            {
+                "id": profile.id,
+                "user_id": user.id,
+                "description": profile.description,
+                "parish": profile.parish,
+                "biography": profile.biography,
+                "sex": profile.sex,
+                "race": profile.race,
+                "birth_year": profile.birth_year,
+                "height": profile.height,
+                "fav_cuisine": profile.fav_cuisine,
+                "fav_colour": profile.fav_colour,
+                "fav_school_sibject": profile.fav_school_subject,
+                "political": profile.political,
+                "religious": profile.religious,
+                "family_oriented": profile.family_oriented,
+                "username": user.username,
+                "photo": user.photo,
+                "date_joined": user.date_joined.isoformat(),
+                "profile_created": profile.created_at.isoformat(),
+            }
+        )
+
+    return jsonify(profiles_with_user_info), 200
+
+@app.route("/api/users/<int:user_id2>", methods=["GET"])
+@csrf.exempt
+@jwt_required
+def get_user(user_id, user_id2):
+    user = db.session.get(User, user_id2)
+    if user:
+        return jsonify(user.to_dict()), 200
+    return jsonify({"error": "User not found"}), 404
+
+@app.route("/api/users/<int:user_id2>/favourites", methods=["GET"])
+@csrf.exempt
+@jwt_required
+def user_favourites(user_id, user_id2):
+    favs = Favourite.query.filter_by(user_id_fk=user_id2).all()
+    data = []
+    for fav in favs:
+        user = db.session.get(User, fav.fav_user_id_fk)
+        if user:
+            data.append(
+                {
+                    "id": user.id,
+                    "username": user.username,
+                    "email": user.email,
+                    "photo": user.photo,
+                }
+            )
+    return jsonify(data), 200
+
+
+@app.route("/api/users/favourites/<int:N>", methods=["GET"])
+@csrf.exempt
+@jwt_required
+def top_favourited_users(user_id, N):
+    counts = (
+        db.session.query(
+            Favourite.fav_user_id_fk,
+            func.count(Favourite.fav_user_id_fk).label("count"),
+        )
+        .group_by(Favourite.fav_user_id_fk)
+        .order_by(func.count(Favourite.fav_user_id_fk).desc())
+        .limit(N)
+        .all()
+    )
 
     result = []
-    for p in query.all():
-        result.append({
-            'id': p.id,
-            'user_id_fk': p.user_id_fk,
-            'birth_year': p.birth_year,
-            'sex': p.sex,
-            'race': p.race,
-            'description': p.description,
-            'parish': p.parish,
-            'biography': p.biography,
-            'height': p.height,
-            'fav_cuisine': p.fav_cuisine,
-            'fav_colour': p.fav_colour,
-            'fav_school_subject': p.fav_school_subject,
-            'political': p.political,
-            'religious': p.religious,
-            'family_oriented': p.family_oriented,
-            'name': User.query.get(p.user_id_fk).name
-        })
+    for user_id, count in counts:
+        user = db.session.get(User, user_id)
+        if user:
+            udata = {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "photo": user.photo,
+                "favourite_count": count,
+            }
+            result.append(udata)
 
-    return jsonify(result)
+    return jsonify(result), 200
 
 
-# ---------- MATCHING ----------
-@app.route('/api/profiles/matches/<int:profile_id>', methods=['GET'])
-@jwt_required()
-def match(profile_id):
-    main_profile = Profile.query.get(profile_id)
-    profiles = Profile.query.filter(Profile.user_id_fk != main_profile.user_id_fk).all()
-    matches = []
-    for p in profiles:
-        age_diff = abs((datetime.now().year - p.birth_year) - (datetime.now().year - main_profile.birth_year))
-        height_diff = abs(p.height - main_profile.height)
-        common = sum([
-            p.fav_cuisine == main_profile.fav_cuisine,
-            p.fav_colour == main_profile.fav_colour,
-            p.fav_school_subject == main_profile.fav_school_subject,
-            p.political == main_profile.political,
-            p.religious == main_profile.religious,
-            p.family_oriented == main_profile.family_oriented,
-        ])
-        if age_diff <= 5 and 3 <= height_diff <= 10 and common >= 3:
-            matches.append({
-                'id': p.id,
-                'name': User.query.get(p.user_id_fk).name,
-                'birth_year': p.birth_year,
-                'sex': p.sex,
-                'race': p.race
-            })
-    return jsonify(matches)
+@app.route("/api/users/<int:user_id>/profiles", methods=["GET"])
+@csrf.exempt
+@jwt_required
+def get_user_profiles(current_user_id, user_id):
+    profiles = Profile.query.filter_by(user_id_fk=user_id).all()
+
+    if not profiles:
+        return jsonify({"message": "No profiles found for this user."}), 404
+
+    profiles_data = [profile.to_dict() for profile in profiles]
+    return jsonify(profiles_data), 200
+
+# The functions below should be applicable to all Flask apps.
+
+# Function to collect form errors from Flask-WTF
+def form_errors(form):
+    error_messages = []
+    """Collects form errors"""
+    for field, errors in form.errors.items():
+        for error in errors:
+            message = "Error in the %s field - %s" % (
+                getattr(form, field).label.text,
+                error,
+            )
+            error_messages.append(message)
+
+    return error_messages
 
 
-# ---------- FILE UPLOAD ----------
-@app.route('/uploads/<filename>')
-def uploads(filename):
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+@app.route("/<file_name>.txt")
+def send_text_file(file_name):
+    """Send your static text file."""
+    file_dot_text = file_name + ".txt"
+    return app.send_static_file(file_dot_text)
 
 
-# ---------- RUN ----------
-# if __name__ == '__main__':
-#     app.run(debug=True)
+@app.after_request
+def add_header(response):
+    """
+    Add headers to both force latest IE rendering engine or Chrome Frame,
+    and also tell the browser not to cache the rendered page. If we wanted
+    to we could change max-age to 600 seconds which would be 10 minutes.
+    """
+    response.headers["X-UA-Compatible"] = "IE=Edge,chrome=1"
+    response.headers["Cache-Control"] = "public, max-age=0"
+    return response
+
+
+@app.errorhandler(404)
+def page_not_found(error):
+    """Custom 404 page."""
+    return render_template("404.html"), 404
