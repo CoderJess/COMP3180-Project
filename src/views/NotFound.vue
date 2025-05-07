@@ -4,7 +4,7 @@
         <h1 class="display-1 text-danger fw-bold">404</h1>
         <h3 class="mb-3 text-dark">Page Not Found</h3>
         <p class="text-muted mb-4">
-          Oops! The page you're looking for doesn't exist or was moved.
+          Oops! The page you're looking for doesn't exist.
         </p>
         <router-link to="/" class="btn btn-primary">
           Go Back Home

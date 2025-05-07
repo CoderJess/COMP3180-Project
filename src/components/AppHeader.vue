@@ -136,56 +136,6 @@ async function logout() {
   text-decoration: none;
 }
 
-/* Button Styling */
-/* .btn {
-  border-radius: 25px;
-  padding: 0.5rem 1.2rem;
-  transition: all 0.3s ease;
-  font-weight: 600;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-} */
-
-/* .btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-} */
-
-/* Create Profile Button */
-/* .btn-outline-warning {
-  border: 2px solid #ffc107;
-  color: #ffc107;
-  background: rgba(255, 193, 7, 0.05);
-} */
-
-/* .btn-outline-warning:hover {
-  background: #ffc107;
-  color: #2f2f2f;
-} */
-
-/* Favorites Button */
-/* .btn-outline-info {
-  border: 2px solid #0dcaf0;
-  color: #0dcaf0;
-  background: rgba(13, 202, 240, 0.05);
-} */
-
-/* .btn-outline-info:hover {
-  background: #0dcaf0;
-  color: #2f2f2f;
-} */
-
-/* Logout Button */
-/* .btn-outline-light {
-  border: 2px solid #f8f9fa;
-  color: #f8f9fa;
-  background: rgba(248, 249, 250, 0.05);
-}
-
-.btn-outline-light:hover {
-  background: #f8f9fa;
-  color: #2f2f2f;
-} */
-
 /* Navbar Toggle Button */
 .navbar-toggler {
   border: none;

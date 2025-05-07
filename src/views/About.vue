@@ -89,7 +89,6 @@
         
         <div class="cta-section">
           <h2>Ready to find your perfect match?</h2>
-          <router-link to="/register" class="cta-button">Join Jam-Date Today</router-link>
         </div>
       </div>
     </div>
